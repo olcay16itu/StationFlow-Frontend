@@ -1,0 +1,22 @@
+# OS Files
+.DS_Store
+*.log
+
+# Environment Variables
+.env
+
+# IDEs
+.idea/
+.vscode/
+*.iml
+
+# Backend
+Backend/target/
+Backend/help.md
+Backend/.mvn/wrapper/maven-wrapper.properties
+
+# Frontend
+Frontend/node_modules/
+Frontend/dist/
+Frontend/.next/
+Frontend/out/
