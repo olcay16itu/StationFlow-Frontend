@@ -217,6 +217,21 @@ const AppContent: React.FC = () => {
     }
   };
 
+  if (isLoading) {
+    return (
+      <div className="fixed inset-0 bg-slate-100 dark:bg-slate-900 z-[9999] flex flex-col items-center justify-center">
+        <div className="relative flex h-20 w-20 mb-4">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-20 w-20 bg-blue-500 flex items-center justify-center">
+            <MapPin size={40} className="text-white animate-bounce" />
+          </span>
+        </div>
+        <h2 className="text-2xl font-bold text-slate-800 dark:text-white mb-2">StationFlow</h2>
+        <p className="text-slate-500 dark:text-slate-400 animate-pulse">Duraklar yükleniyor...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-slate-100 dark:bg-slate-900 transition-colors duration-300">
 

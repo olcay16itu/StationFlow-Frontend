@@ -1,6 +1,9 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Station, UserLocation, Location } from '../types';
 import L from 'leaflet';
+import 'leaflet.markercluster';
+import 'leaflet.markercluster/dist/MarkerCluster.css';
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 
 // Fix for default marker icons
 // @ts-ignore
@@ -36,8 +39,8 @@ const MapView: React.FC<MapViewProps> = ({
     onReportStatus
 }) => {
     const mapContainerRef = useRef<HTMLDivElement>(null);
-    const mapInstanceRef = useRef<L.Map | null>(null);
-    const markersRef = useRef<{ [key: string]: L.Marker }>({});
+    const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
+    const clusterGroupRef = useRef<L.MarkerClusterGroup | null>(null);
     const routeLayerRef = useRef<L.Polyline | null>(null);
     const userMarkerRef = useRef<L.Marker | null>(null);
 
@@ -59,16 +62,12 @@ const MapView: React.FC<MapViewProps> = ({
         // Bind Route Button
         const routeBtn = container.querySelector('.route-btn');
         if (routeBtn) {
-            // Replace the button with a clone to strip old listeners and add a fresh one
-            // This prevents duplicate listeners and ensures we attach to the current DOM
             const newBtn = routeBtn.cloneNode(true);
             routeBtn.parentNode?.replaceChild(newBtn, routeBtn);
 
             newBtn.addEventListener('click', (ev) => {
                 ev.preventDefault();
-                ev.stopPropagation(); // Stop propagation to map click
-
-                // Check the action data attribute to decide which handler to call
+                ev.stopPropagation();
                 const targetBtn = ev.currentTarget as HTMLElement;
                 const action = targetBtn.getAttribute('data-action');
 
@@ -98,27 +97,20 @@ const MapView: React.FC<MapViewProps> = ({
         }
     };
 
-    const [visibleStations, setVisibleStations] = React.useState<Station[]>([]);
     const [zoomLevel, setZoomLevel] = React.useState(13);
-
-    // Keep track of stations for event listeners to avoid stale closures
-    const stationsRef = useRef(stations);
-    useEffect(() => {
-        stationsRef.current = stations;
-    }, [stations]);
 
     const isSwitchingPopup = useRef(false);
 
     // Initialize Map
     useEffect(() => {
-        if (!mapContainerRef.current || mapInstanceRef.current) return;
+        if (!mapContainerRef.current || mapInstance) return;
 
         const initialLat = userLocation ? userLocation.lat : 41.0082;
         const initialLng = userLocation ? userLocation.lng : 28.9784;
 
         const map = L.map(mapContainerRef.current, {
             zoomControl: false,
-            preferCanvas: true // Enable Canvas renderer for better performance
+            preferCanvas: true
         }).setView([initialLat, initialLng], 13);
 
         L.control.zoom({ position: 'topright' }).addTo(map);
@@ -128,6 +120,33 @@ const MapView: React.FC<MapViewProps> = ({
             subdomains: 'abcd',
             maxZoom: 20
         }).addTo(map);
+
+        // Initialize Cluster Group
+        const clusterGroup = L.markerClusterGroup({
+            showCoverageOnHover: false,
+            maxClusterRadius: 50,
+            spiderfyOnMaxZoom: true,
+            disableClusteringAtZoom: 16, // Disable clustering at high zoom
+            iconCreateFunction: function (cluster) {
+                const count = cluster.getChildCount();
+                let c = ' marker-cluster-';
+                if (count < 10) {
+                    c += 'small';
+                } else if (count < 100) {
+                    c += 'medium';
+                } else {
+                    c += 'large';
+                }
+
+                return new L.DivIcon({
+                    html: '<div><span>' + count + '</span></div>',
+                    className: 'marker-cluster' + c,
+                    iconSize: new L.Point(40, 40)
+                });
+            }
+        });
+        map.addLayer(clusterGroup);
+        clusterGroupRef.current = clusterGroup;
 
         // Global listener for ANY popup open event on the map
         map.on('popupopen', (e) => {
@@ -140,13 +159,9 @@ const MapView: React.FC<MapViewProps> = ({
 
         // Global listener for popup close to handle deselection
         map.on('popupclose', (e) => {
-            // Mark that we are potentially switching popups
             isSwitchingPopup.current = true;
-
-            // Wait a bit to see if a 'popupopen' event fires immediately after
             setTimeout(() => {
                 if (isSwitchingPopup.current) {
-                    // If still true, it means no new popup opened -> we are truly closing
                     if (onDeselectRef.current) {
                         onDeselectRef.current();
                     }
@@ -155,71 +170,21 @@ const MapView: React.FC<MapViewProps> = ({
             }, 200);
         });
 
-        // Handle map click for deselection (backup for popup close)
-        map.on('click', (e) => {
-            // If we are picking a location, don't deselect
-            // The picking logic is handled by a separate listener, but we need to be careful
-            // Actually, the picking logic adds its own listener.
-            // We just need to check if we clicked on a marker? No, map click means background.
-            // But we need to make sure we didn't click on a marker (which bubbles to map click?)
-            // Leaflet handles this: click on marker stops propagation if configured, or we can check original event.
-            // However, simpler check: if popup is open, it will close and trigger popupclose.
-            // If no popup is open and we click map, we should deselect.
-
-            // Note: We can't easily access isPickingLocation state here due to closure, 
-            // but we can check if the map cursor is crosshair or check a ref if we had one.
-            // For now, rely on popupclose for main logic, but this is a fallback.
-            // Actually, let's NOT add a conflicting click listener here to avoid race conditions with picking.
-            // The popupclose logic should be sufficient if working correctly.
+        map.on('zoomend', () => {
+            setZoomLevel(map.getZoom());
         });
 
-        // Track bounds and zoom
-        const updateVisibleStations = () => {
-            const bounds = map.getBounds();
-            const zoom = map.getZoom();
-            setZoomLevel(zoom);
-
-            // Filter stations within bounds
-            // Use ref to get latest stations
-            const currentStations = stationsRef.current;
-
-            if (currentStations.length > 0) {
-                const visible = currentStations.filter(s =>
-                    bounds.contains([s.location.lat, s.location.lng])
-                );
-                setVisibleStations(visible);
-            }
-        };
-
-        map.on('moveend', updateVisibleStations);
-        map.on('zoomend', updateVisibleStations);
-
-        mapInstanceRef.current = map;
-
-        // Initial update
-        updateVisibleStations();
+        setMapInstance(map);
 
         return () => {
             map.remove();
-            mapInstanceRef.current = null;
+            setMapInstance(null);
         };
     }, []);
 
-    // Update visible stations when stations prop changes
-    useEffect(() => {
-        if (mapInstanceRef.current) {
-            const bounds = mapInstanceRef.current.getBounds();
-            const visible = stations.filter(s =>
-                bounds.contains([s.location.lat, s.location.lng])
-            );
-            setVisibleStations(visible);
-        }
-    }, [stations]);
-
     // Handle "Picking Location" Mode
     useEffect(() => {
-        const map = mapInstanceRef.current;
-        if (!map) return;
+        if (!mapInstance) return;
 
         if (isPickingLocation) {
             if (mapContainerRef.current) {
@@ -232,20 +197,20 @@ const MapView: React.FC<MapViewProps> = ({
                 }
             };
 
-            map.on('click', handler);
+            mapInstance.on('click', handler);
 
             return () => {
-                map.off('click', handler);
+                mapInstance.off('click', handler);
                 if (mapContainerRef.current) {
                     mapContainerRef.current.style.cursor = '';
                 }
             };
         }
-    }, [isPickingLocation, onLocationPicked]);
+    }, [isPickingLocation, onLocationPicked, mapInstance]);
 
     // Handle User Location Update
     useEffect(() => {
-        if (!mapInstanceRef.current || !userLocation) return;
+        if (!mapInstance || !userLocation) return;
 
         if (!userMarkerRef.current) {
             const userIcon = L.divIcon({
@@ -258,103 +223,53 @@ const MapView: React.FC<MapViewProps> = ({
                 iconAnchor: [12, 12]
             });
 
-            userMarkerRef.current = L.marker([userLocation.lat, userLocation.lng], { icon: userIcon })
-                .addTo(mapInstanceRef.current)
+            // Add to map directly, NOT to cluster group
+            userMarkerRef.current = L.marker([userLocation.lat, userLocation.lng], {
+                icon: userIcon,
+                zIndexOffset: 2000 // High z-index to stay on top
+            })
+                .addTo(mapInstance)
                 .bindPopup("Konumunuz");
 
-            mapInstanceRef.current.flyTo([userLocation.lat, userLocation.lng], 14);
+            // Only fly to location on first load or if not selecting a station
+            if (!selectedStation) {
+                mapInstance.flyTo([userLocation.lat, userLocation.lng], 14);
+            }
         } else {
             userMarkerRef.current.setLatLng([userLocation.lat, userLocation.lng]);
         }
-    }, [userLocation]);
+    }, [userLocation, mapInstance]); // Added mapInstance dependency
 
-    // Handle Stations (Markers)
+    // Handle Stations (Markers with Clustering)
     useEffect(() => {
-        if (!mapInstanceRef.current) return;
+        if (!mapInstance || !clusterGroupRef.current) return;
 
-        const currentIds = new Set(visibleStations.map(s => s.id));
-        // Always include selected station even if out of bounds (though map usually centers on it)
-        if (selectedStation) currentIds.add(selectedStation.id);
-        // Always include route destination to prevent "route to nowhere" when filtering
-        if (routeDestination) currentIds.add(routeDestination.id);
+        const clusterGroup = clusterGroupRef.current;
+        clusterGroup.clearLayers();
 
-        // Remove old markers
-        Object.keys(markersRef.current).forEach(id => {
-            if (!currentIds.has(id)) {
-                markersRef.current[id].remove();
-                delete markersRef.current[id];
-            }
-        });
+        const markers: L.Layer[] = [];
 
-        // Render visible stations
-        let stationsToRender = [...visibleStations];
-
-        // Add selected if missing
-        if (selectedStation && !visibleStations.some(s => s.id === selectedStation.id)) {
-            stationsToRender.push(selectedStation);
-        }
-
-        // Add route destination if missing and distinct
-        if (routeDestination &&
-            !visibleStations.some(s => s.id === routeDestination.id) &&
-            (!selectedStation || selectedStation.id !== routeDestination.id)) {
-            stationsToRender.push(routeDestination);
-        }
-
-        stationsToRender.forEach(station => {
-            // Skip optimization removed to ensure deselected markers revert to dots
-            // if (markersRef.current[station.id] && selectedStation?.id !== station.id) return;
-
+        stations.forEach(station => {
             const isSelected = selectedStation?.id === station.id;
+            const isDestination = routeDestination?.id === station.id;
 
             // Determine colors
-            let color = '#64748b'; // slate-500 default
-            let fillColor = '#ffffff';
-            let iconChar = '';
+            let color = '#64748b';
             let colorClass = '';
+            let iconChar = '';
 
             switch (station.type.toLowerCase()) {
-                case 'bus':
-                    color = '#ef4444'; // red-500
-                    colorClass = 'bg-red-500';
-                    iconChar = '🚌';
-                    break;
-                case 'metro':
-                    color = '#4f46e5'; // indigo-600
-                    colorClass = 'bg-indigo-600';
-                    iconChar = '🚇';
-                    break;
-                case 'bike':
-                    color = '#22c55e'; // green-500
-                    colorClass = 'bg-green-500';
-                    iconChar = '🚲';
-                    break;
-                case 'scooter':
-                    color = '#eab308'; // yellow-500
-                    colorClass = 'bg-yellow-500';
-                    iconChar = '🛴';
-                    break;
-                case 'minibus':
-                    color = '#9333ea'; // purple-600
-                    colorClass = 'bg-purple-600';
-                    iconChar = '🚐';
-                    break;
-                case 'taxi':
-                    color = '#eab308'; // yellow-500
-                    colorClass = 'bg-yellow-500';
-                    iconChar = '🚕';
-                    break;
-                case 'dolmus':
-                    color = '#3b82f6'; // blue-500
-                    colorClass = 'bg-blue-500';
-                    iconChar = '🚐';
-                    break;
+                case 'bus': color = '#ef4444'; colorClass = 'bg-red-500'; iconChar = '🚌'; break;
+                case 'metro': color = '#4f46e5'; colorClass = 'bg-indigo-600'; iconChar = '🚇'; break;
+                case 'bike': color = '#22c55e'; colorClass = 'bg-green-500'; iconChar = '🚲'; break;
+                case 'scooter': color = '#eab308'; colorClass = 'bg-yellow-500'; iconChar = '🛴'; break;
+                case 'minibus': color = '#9333ea'; colorClass = 'bg-purple-600'; iconChar = '🚐'; break;
+                case 'taxi': color = '#eab308'; colorClass = 'bg-yellow-500'; iconChar = '🚕'; break;
+                case 'dolmus': color = '#3b82f6'; colorClass = 'bg-blue-500'; iconChar = '🚐'; break;
             }
 
             if (station.status === 'maintenance') {
-                color = '#9ca3af'; // gray-400
-                colorClass = 'bg-gray-400';
-                iconChar = '🔧';
+                color = '#9ca3af'; colorClass = 'bg-gray-400'; iconChar = '🔧';
             }
 
             // Determine button state based on route
@@ -363,7 +278,6 @@ const MapView: React.FC<MapViewProps> = ({
             const btnColor = isRouteActive ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700';
             const action = isRouteActive ? 'remove' : 'create';
 
-            // Popup Content Template
             const popupContent = `
             <div class="p-1 min-w-[200px] font-sans">
                 <div class="font-bold text-base mb-1 text-slate-800">${station.name}</div>
@@ -389,14 +303,10 @@ const MapView: React.FC<MapViewProps> = ({
             </div>
         `;
 
-            // Use CircleMarker for non-selected stations when zoomed out or just generally for performance
-            // Use DivIcon (Logo) ONLY for selected station
+            let marker: L.Marker;
 
-            if (isSelected) {
-                // Render as detailed Icon
+            if (isSelected || isDestination) {
                 const size = 'w-10 h-10 text-xl';
-                const zIndex = 1000;
-
                 const customIcon = L.divIcon({
                     className: 'bg-transparent',
                     html: `<div class="${colorClass} ${size} rounded-full border-2 border-white shadow-lg flex items-center justify-center transition-all transform hover:scale-110 text-white font-bold cursor-pointer">
@@ -406,106 +316,45 @@ const MapView: React.FC<MapViewProps> = ({
                     iconAnchor: [20, 20]
                 });
 
-                if (markersRef.current[station.id]) {
-                    // If it was already a marker, check if it was a CircleMarker. If so, remove and replace.
-                    // Or if it was a DivIcon, update it.
-                    // Simplest approach: Remove and recreate if switching types, or just update icon.
-                    // Since we are switching classes (CircleMarker vs Marker), we need to check instance.
-
-                    const existingLayer = markersRef.current[station.id];
-                    if (existingLayer instanceof L.CircleMarker) {
-                        existingLayer.remove();
-                        delete markersRef.current[station.id];
-                        // Will be recreated below
-                    } else {
-                        // Update existing Marker
-                        const marker = existingLayer as L.Marker;
-                        marker.setIcon(customIcon);
-                        marker.setZIndexOffset(zIndex);
-                        // Update popup...
-                        const oldContent = marker.getPopup()?.getContent();
-                        if (oldContent !== popupContent) {
-                            marker.setPopupContent(popupContent);
-                            if (marker.isPopupOpen()) {
-                                setTimeout(() => {
-                                    const contentNode = marker.getPopup()?.getElement();
-                                    if (contentNode) bindPopupButtons(contentNode);
-                                }, 0);
-                            }
-                        }
-                        return;
-                    }
-                }
-
-                // Create new Marker
-                const marker = L.marker([station.location.lat, station.location.lng], {
+                marker = L.marker([station.location.lat, station.location.lng], {
                     icon: customIcon,
-                    zIndexOffset: zIndex
-                })
-                    .bindPopup(popupContent, { offset: [0, -10], autoClose: true })
-                    .addTo(mapInstanceRef.current!)
-                    .on('click', () => {
-                        if (!isPickingLocation) {
-                            onStationSelect(station);
-                        }
-                    });
+                    zIndexOffset: 1000
+                });
 
-                // Open popup if selected
-                // Close other popups first to ensure single popup behavior
-                mapInstanceRef.current!.closePopup();
-                if (!marker.isPopupOpen()) {
-                    marker.openPopup();
+                if (isSelected) {
+                    marker.bindPopup(popupContent, { offset: [0, -10], autoClose: true });
+                    setTimeout(() => {
+                        if (!marker.isPopupOpen()) marker.openPopup();
+                    }, 100);
+                } else {
+                    marker.bindPopup(popupContent, { offset: [0, -10], autoClose: true });
                 }
-
-                markersRef.current[station.id] = marker;
 
             } else {
-                // Render as CircleMarker (Dot)
+                const circleIcon = L.divIcon({
+                    className: 'bg-transparent',
+                    html: `<div style="background-color: ${color}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.2);"></div>`,
+                    iconSize: [12, 12],
+                    iconAnchor: [6, 6]
+                });
 
-                // CRITICAL FIX: Check if existing is Marker (DivIcon), if so remove it to revert to Dot
-                if (markersRef.current[station.id] && markersRef.current[station.id] instanceof L.Marker && !(markersRef.current[station.id] instanceof L.CircleMarker)) {
-                    markersRef.current[station.id].remove();
-                    delete markersRef.current[station.id];
-                }
-
-                if (markersRef.current[station.id]) {
-                    // Update existing CircleMarker
-                    const circle = markersRef.current[station.id] as L.CircleMarker;
-                    circle.setStyle({ fillColor: color, color: '#fff' });
-
-                    const oldContent = circle.getPopup()?.getContent();
-                    if (oldContent !== popupContent) {
-                        circle.setPopupContent(popupContent);
-                        if (circle.isPopupOpen()) {
-                            setTimeout(() => {
-                                const contentNode = circle.getPopup()?.getElement();
-                                if (contentNode) bindPopupButtons(contentNode);
-                            }, 0);
-                        }
-                    }
-                } else {
-                    // Create new CircleMarker
-                    const circle = L.circleMarker([station.location.lat, station.location.lng], {
-                        radius: 6,
-                        fillColor: color,
-                        color: '#fff',
-                        weight: 2,
-                        opacity: 1,
-                        fillOpacity: 0.8
-                    })
-                        .bindPopup(popupContent, { autoClose: true })
-                        .addTo(mapInstanceRef.current!)
-                        .on('click', () => {
-                            if (!isPickingLocation) {
-                                onStationSelect(station);
-                            }
-                        });
-
-                    markersRef.current[station.id] = circle as any; // Cast to any to store in map
-                }
+                marker = L.marker([station.location.lat, station.location.lng], {
+                    icon: circleIcon
+                }).bindPopup(popupContent, { autoClose: true });
             }
+
+            marker.on('click', () => {
+                if (!isPickingLocation) {
+                    onStationSelect(station);
+                }
+            });
+
+            markers.push(marker);
         });
-    }, [visibleStations, selectedStation, onStationSelect, isPickingLocation, routeDestination, showRoute]);
+
+        clusterGroup.addLayers(markers);
+
+    }, [stations, selectedStation, routeDestination, showRoute, isPickingLocation, mapInstance]);
 
     const hasFittedRouteRef = useRef(false);
 
@@ -516,12 +365,15 @@ const MapView: React.FC<MapViewProps> = ({
 
     // Handle Route Drawing with OSRM
     useEffect(() => {
-        if (!mapInstanceRef.current) return;
+        if (!mapInstance) return;
 
+        // Cleanup previous route immediately
         if (routeLayerRef.current) {
             routeLayerRef.current.remove();
             routeLayerRef.current = null;
         }
+
+        let isCancelled = false;
 
         const fetchRoute = async () => {
             if (showRoute && userLocation && routeDestination && !isPickingLocation) {
@@ -531,41 +383,49 @@ const MapView: React.FC<MapViewProps> = ({
                     const response = await fetch(url);
                     const data = await response.json();
 
+                    if (isCancelled) return;
+
                     if (data.routes && data.routes.length > 0) {
                         const geometry = data.routes[0].geometry;
                         const latLngs = geometry.coordinates.map((coord: number[]) => [coord[1], coord[0]] as [number, number]);
 
-                        routeLayerRef.current = L.polyline(latLngs, {
-                            color: '#3b82f6',
-                            weight: 5,
-                            opacity: 0.8,
-                            lineCap: 'round',
-                            lineJoin: 'round'
-                        }).addTo(mapInstanceRef.current!);
+                        // Double check before adding to map
+                        if (!isCancelled) {
+                            routeLayerRef.current = L.polyline(latLngs, {
+                                color: '#3b82f6',
+                                weight: 5,
+                                opacity: 0.8,
+                                lineCap: 'round',
+                                lineJoin: 'round'
+                            }).addTo(mapInstance);
 
-                        // Only fit bounds if we haven't done so for this route yet
-                        if (!hasFittedRouteRef.current) {
-                            mapInstanceRef.current!.fitBounds(L.latLngBounds(latLngs), { padding: [50, 50] });
-                            hasFittedRouteRef.current = true;
+                            if (!hasFittedRouteRef.current) {
+                                mapInstance.fitBounds(L.latLngBounds(latLngs), { padding: [50, 50] });
+                                hasFittedRouteRef.current = true;
+                            }
                         }
                     }
                 } catch (error) {
                     console.error("Routing error:", error);
-                    // Fallback line
+                    if (isCancelled) return;
+
                     const latlngs: [number, number][] = [
                         [userLocation.lat, userLocation.lng],
                         [routeDestination.location.lat, routeDestination.location.lng]
                     ];
-                    routeLayerRef.current = L.polyline(latlngs, {
-                        color: '#ef4444',
-                        weight: 4,
-                        opacity: 0.7,
-                        dashArray: '10, 10'
-                    }).addTo(mapInstanceRef.current!);
 
-                    if (!hasFittedRouteRef.current) {
-                        mapInstanceRef.current!.fitBounds(L.latLngBounds(latlngs), { padding: [50, 50] });
-                        hasFittedRouteRef.current = true;
+                    if (!isCancelled) {
+                        routeLayerRef.current = L.polyline(latlngs, {
+                            color: '#ef4444',
+                            weight: 4,
+                            opacity: 0.7,
+                            dashArray: '10, 10'
+                        }).addTo(mapInstance);
+
+                        if (!hasFittedRouteRef.current) {
+                            mapInstance.fitBounds(L.latLngBounds(latlngs), { padding: [50, 50] });
+                            hasFittedRouteRef.current = true;
+                        }
                     }
                 }
             }
@@ -573,18 +433,24 @@ const MapView: React.FC<MapViewProps> = ({
 
         fetchRoute();
 
-    }, [showRoute, userLocation, routeDestination, isPickingLocation]);
+        return () => {
+            isCancelled = true;
+            if (routeLayerRef.current) {
+                routeLayerRef.current.remove();
+                routeLayerRef.current = null;
+            }
+        };
+
+    }, [showRoute, userLocation, routeDestination, isPickingLocation, mapInstance]);
 
     // Center map on selection
     useEffect(() => {
-        if (selectedStation && mapInstanceRef.current && !showRoute && !isPickingLocation) {
-            // Use flyTo for better UX when moving to distant stations
-            // This ensures the map loads tiles in the new area
-            mapInstanceRef.current.flyTo([selectedStation.location.lat, selectedStation.location.lng], 16, {
-                duration: 1.5 // Animation duration in seconds
+        if (selectedStation && mapInstance && !showRoute && !isPickingLocation) {
+            mapInstance.flyTo([selectedStation.location.lat, selectedStation.location.lng], 16, {
+                duration: 1.5
             });
         }
-    }, [selectedStation, showRoute, isPickingLocation]);
+    }, [selectedStation, showRoute, isPickingLocation, mapInstance]);
 
     return <div ref={mapContainerRef} className="h-full w-full bg-slate-200" />;
 };
