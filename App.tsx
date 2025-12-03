@@ -162,6 +162,16 @@ const AppContent: React.FC = () => {
     }
   };
 
+  const handleDeselect = () => {
+    setSelectedStation(null);
+  };
+
+  const handleFilterChange = (newFilter: TransportType | 'all') => {
+    setFilter(newFilter);
+    setSelectedStation(null);
+    // Also reset view if needed, but MapView handles bounds update
+  };
+
   const handleCreateRoute = () => {
     if (!userLocation || !selectedStation) {
       alert("Konum bilgisi veya istasyon seçimi eksik.");
@@ -272,7 +282,7 @@ const AppContent: React.FC = () => {
         onLoginClick={() => setShowAuth(true)}
         onLogoutClick={handleLogout}
         filter={filter}
-        setFilter={setFilter}
+        setFilter={handleFilterChange}
         isLoading={isLoading}
         user={user}
         isOpen={isSidebarOpen && !isPickingLocation}
@@ -286,6 +296,7 @@ const AppContent: React.FC = () => {
           selectedStation={selectedStation}
           routeDestination={routeDestination}
           onStationSelect={handleStationSelect}
+          onDeselect={handleDeselect}
           showRoute={showRoute}
           isPickingLocation={isPickingLocation}
           onLocationPicked={handleLocationPicked}
@@ -294,9 +305,8 @@ const AppContent: React.FC = () => {
           onReportStatus={handleReportStatus}
         />
 
-        {/* Floating End Route Button */}
         {showRoute && routeDestination && (
-          <div className="absolute bottom-8 sm:bottom-10 left-0 right-0 z-[500] flex justify-center px-4 pointer-events-none pb-safe">
+          <div className="absolute bottom-20 sm:bottom-10 left-0 right-0 z-[500] flex justify-center px-4 pointer-events-none pb-safe">
             <button
               onClick={handleRemoveRoute}
               className="pointer-events-auto bg-red-600 hover:bg-red-700 text-white font-bold py-3.5 px-6 rounded-full shadow-[0_10px_40px_-10px_rgba(220,38,38,0.5)] transform transition-all hover:scale-105 active:scale-95 flex items-center gap-2 animate-fade-in-up border-2 border-white/20 max-w-[90%] truncate"
@@ -309,7 +319,7 @@ const AppContent: React.FC = () => {
 
         {/* Admin Dashboard Toggle */}
         {user?.role === 'admin' && (
-          <div className="absolute top-4 right-4 z-[500]">
+          <div className="absolute top-24 right-4 z-[500]">
             <button
               onClick={() => setShowAdminDashboard(!showAdminDashboard)}
               className="bg-slate-800 text-white p-3 rounded-full shadow-lg hover:bg-slate-700 transition-colors"
@@ -322,7 +332,7 @@ const AppContent: React.FC = () => {
 
         {/* Admin Dashboard Modal */}
         {showAdminDashboard && (
-          <div className="absolute inset-0 z-[600] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className={`absolute inset-0 z-[600] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 transition-all duration-300 ${isSidebarOpen && window.innerWidth > 640 ? 'left-80' : 'left-0'}`}>
             <div className="relative w-full max-w-4xl max-h-[90vh] overflow-auto">
               <button
                 onClick={() => setShowAdminDashboard(false)}

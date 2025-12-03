@@ -32,6 +32,9 @@ export const en = {
     metro: 'Metro',
     bike: 'Bike',
     scooter: 'Scooter',
+    minibus: 'Minibus',
+    taxi: 'Taxi',
+    dolmus: 'Dolmus',
     station: 'Station',
     capacity: 'Capacity',
     status: 'Status',
@@ -82,5 +85,18 @@ export const en = {
 
     // Units
     vehicle: 'Vehicle',
-    occupancy: 'Occupancy'
+    occupancy: 'Occupancy',
+
+    // Feedback
+    feedbackTitle: 'Feedback',
+    feedbackSuccess: 'Thank You!',
+    feedbackSent: 'Your feedback has been received.',
+    feedbackMessage: 'Your Message',
+    feedbackPlaceholder: 'Write your feedback here...',
+    emailOptional: 'Email (Optional)',
+    sending: 'Sending...',
+    sendFeedback: 'Send Feedback',
+    feedbackTooShort: 'Message is too short (min 10 chars).',
+    feedbackTooLong: 'Message is too long (max 500 chars).',
+    invalidEmail: 'Invalid email address.'
 };

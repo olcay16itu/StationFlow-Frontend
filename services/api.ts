@@ -166,3 +166,20 @@ export const rejectUpdateRequest = async (requestId: string) => {
     }
     return response.json();
 };
+
+export const submitFeedback = async (message: string, email?: string) => {
+    const response = await fetch(`${API_URL}/feedback`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            // Feedback can be anonymous, so auth header is optional but good if available
+            ...getAuthHeader()
+        },
+        body: JSON.stringify({ message, email })
+    });
+
+    if (!response.ok) {
+        throw new Error('Geri bildirim gönderilemedi');
+    }
+    return response.json();
+};

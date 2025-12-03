@@ -1,5 +1,5 @@
 
-export type TransportType = 'bus' | 'metro' | 'bike' | 'scooter';
+export type TransportType = 'bus' | 'metro' | 'bike' | 'scooter' | 'minibus' | 'taxi' | 'dolmus';
 
 export interface Location {
   lat: number;
@@ -29,4 +29,15 @@ export interface User {
   email: string;
   role: 'admin' | 'user';
   token?: string;
+}
+
+export interface UpdateRequest {
+  id: string;
+  stationId: string;
+  stationName: string;
+  userId: string;
+  username: string;
+  requestedAvailable: number;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  createdAt: string;
 }

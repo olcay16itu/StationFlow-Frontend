@@ -32,6 +32,9 @@ export const tr = {
     metro: 'Metro',
     bike: 'Bisiklet',
     scooter: 'Scooter',
+    minibus: 'Minibüs',
+    taxi: 'Taksi',
+    dolmus: 'Dolmuş',
     station: 'İstasyon',
     capacity: 'Kapasite',
     status: 'Durum',
@@ -82,5 +85,18 @@ export const tr = {
 
     // Units
     vehicle: 'Araç',
-    occupancy: 'Doluluk'
+    occupancy: 'Doluluk',
+
+    // Feedback
+    feedbackTitle: 'Geri Bildirim',
+    feedbackSuccess: 'Teşekkürler!',
+    feedbackSent: 'Geri bildiriminiz alındı.',
+    feedbackMessage: 'Mesajınız',
+    feedbackPlaceholder: 'Görüş ve önerilerinizi yazın...',
+    emailOptional: 'E-posta (İsteğe bağlı)',
+    sending: 'Gönderiliyor...',
+    sendFeedback: 'Geri Bildirim Gönder',
+    feedbackTooShort: 'Mesajınız çok kısa (en az 10 karakter).',
+    feedbackTooLong: 'Mesajınız çok uzun (en fazla 500 karakter).',
+    invalidEmail: 'Geçersiz e-posta adresi.'
 };

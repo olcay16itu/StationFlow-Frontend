@@ -1,14 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { fetchUpdateRequests, approveUpdateRequest, rejectUpdateRequest } from '../services/api';
 
-interface UpdateRequest {
-    id: string;
-    stationId: string;
-    userId: string;
-    requestedAvailable: number;
-    status: 'PENDING' | 'APPROVED' | 'REJECTED';
-    createdAt: string;
-}
+import { UpdateRequest } from '../types';
 
 const AdminDashboard: React.FC = () => {
     const [requests, setRequests] = useState<UpdateRequest[]>([]);
@@ -64,8 +57,8 @@ const AdminDashboard: React.FC = () => {
                     {requests.map(request => (
                         <div key={request.id} className="border rounded-lg p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between bg-slate-50 gap-4 sm:gap-0">
                             <div>
-                                <div className="font-semibold text-slate-700">İstasyon ID: {request.stationId}</div>
-                                <div className="text-sm text-slate-500">Kullanıcı: {request.userId}</div>
+                                <div className="font-semibold text-slate-700">İstasyon: {request.stationName}</div>
+                                <div className="text-sm text-slate-500">Kullanıcı: {request.username}</div>
                                 <div className="mt-1">
                                     Talep Edilen Doluluk: <span className="font-bold text-blue-600">{request.requestedAvailable}</span>
                                 </div>

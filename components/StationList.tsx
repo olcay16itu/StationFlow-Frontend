@@ -4,8 +4,10 @@ import { Station, TransportType, User } from '../types';
 import {
     Bus, Train, Bike, Zap, MapPin, Trash2, PlusCircle, LogIn, LogOut,
     CheckCircle, AlertCircle, Ban, Wrench, ChevronLeft, ShieldCheck, Navigation,
-    Moon, Sun, Globe
+    Moon, Sun, Globe, Car, MessageSquare
 } from 'lucide-react';
+import FeedbackModal from './FeedbackModal';
+
 import { useTheme } from '../contexts/ThemeContext';
 import { useLanguage } from '../contexts/LanguageContext';
 
@@ -32,6 +34,9 @@ const getIcon = (type: string, size = 18) => {
         case 'metro': return <Train size={size} className="text-indigo-600" />;
         case 'bike': return <Bike size={size} className="text-green-600" />;
         case 'scooter': return <Zap size={size} className="text-yellow-600" />;
+        case 'minibus': return <Bus size={size} className="text-purple-600" />;
+        case 'taxi': return <Car size={size} className="text-yellow-500" />;
+        case 'dolmus': return <Bus size={size} className="text-blue-500" />;
         default: return <MapPin size={size} className="text-slate-500" />;
     }
 };
@@ -60,7 +65,54 @@ const StationList: React.FC<StationListProps> = ({
         { id: 'metro', label: t('metro'), icon: <Train size={16} /> },
         { id: 'bike', label: t('bike'), icon: <Bike size={16} /> },
         { id: 'scooter', label: t('scooter'), icon: <Zap size={16} /> },
+        { id: 'minibus', label: t('minibus'), icon: <Bus size={16} /> },
+        { id: 'taxi', label: t('taxi'), icon: <Car size={16} /> },
+        { id: 'dolmus', label: t('dolmus'), icon: <Bus size={16} /> },
     ];
+
+    const [searchTerm, setSearchTerm] = React.useState('');
+    const [visibleCount, setVisibleCount] = React.useState(50);
+    const [showFeedbackModal, setShowFeedbackModal] = React.useState(false);
+    const listRef = React.useRef<HTMLDivElement>(null);
+
+    // Filter stations
+    const filteredStations = React.useMemo(() => {
+        let result = stations;
+
+        // Type filter
+        if (filter !== 'all') {
+            result = result.filter(s => s.type.toLowerCase() === filter.toLowerCase());
+        }
+
+        // Search filter
+        if (searchTerm.trim()) {
+            const lowerTerm = searchTerm.toLowerCase();
+            result = result.filter(s => s.name.toLowerCase().includes(lowerTerm));
+        }
+
+        return result;
+    }, [stations, filter, searchTerm]);
+
+    // Visible stations for pagination
+    const visibleStations = React.useMemo(() => {
+        return filteredStations.slice(0, visibleCount);
+    }, [filteredStations, visibleCount]);
+
+    // Reset pagination when filters change
+    React.useEffect(() => {
+        setVisibleCount(50);
+        if (listRef.current) listRef.current.scrollTop = 0;
+    }, [filter, searchTerm]);
+
+    // Handle scroll for infinite loading
+    const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+        const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+        if (scrollHeight - scrollTop <= clientHeight + 100) {
+            if (visibleCount < filteredStations.length) {
+                setVisibleCount(prev => Math.min(prev + 50, filteredStations.length));
+            }
+        }
+    };
 
     const isAdmin = user?.role === 'admin';
 
@@ -182,6 +234,17 @@ const StationList: React.FC<StationListProps> = ({
                 )
             }
 
+            {/* Search Input */}
+            <div className="px-3 pt-3 pb-1 bg-white dark:bg-slate-900 shrink-0">
+                <input
+                    type="text"
+                    placeholder="Durak ara..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-slate-200"
+                />
+            </div>
+
             {/* Filters */}
             <div className="p-3 bg-slate-50 dark:bg-slate-900/50 flex gap-2 overflow-x-auto no-scrollbar border-b border-slate-200 dark:border-slate-800 shrink-0 touch-pan-x">
                 {categories.map((cat) => (
@@ -200,7 +263,11 @@ const StationList: React.FC<StationListProps> = ({
             </div>
 
             {/* List */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-3 bg-slate-50/50 dark:bg-slate-900/50 overscroll-contain">
+            <div
+                ref={listRef}
+                onScroll={handleScroll}
+                className="flex-1 overflow-y-auto p-3 space-y-3 bg-slate-50/50 dark:bg-slate-900/50 overscroll-contain"
+            >
                 {isLoading ? (
                     Array.from({ length: 6 }).map((_, idx) => (
                         <div key={idx} className="p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-800 shadow-sm animate-pulse flex items-start gap-3">
@@ -214,20 +281,20 @@ const StationList: React.FC<StationListProps> = ({
                             </div>
                         </div>
                     ))
-                ) : stations.length === 0 ? (
+                ) : visibleStations.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-48 text-slate-400 dark:text-slate-500 text-center p-4 animate-fade-in-up">
                         <div className="bg-slate-100 dark:bg-slate-800 p-4 rounded-full mb-3">
                             <MapPin size={32} className="opacity-40" />
                         </div>
-                        <p className="font-medium">{t('noStations')}</p>
-                        {isAdmin && (
+                        <p className="font-medium">{searchTerm ? 'Durak bulunamadı' : t('noStations')}</p>
+                        {isAdmin && !searchTerm && (
                             <button onClick={onAddClick} className="mt-3 text-blue-600 dark:text-blue-400 text-sm font-bold hover:text-blue-700 dark:hover:text-blue-300 transition-colors">
                                 {t('firstStation')}
                             </button>
                         )}
                     </div>
                 ) : (
-                    stations.map((station) => {
+                    visibleStations.map((station) => {
                         let statusStyle = getStatusStyle(station.status);
 
                         // Override color based on percentage logic requested by user
@@ -298,7 +365,10 @@ const StationList: React.FC<StationListProps> = ({
                                             <p className="text-xs text-slate-500 dark:text-slate-400 capitalize mt-0.5">
                                                 {station.type.toLowerCase() === 'bike' ? t('bikeStation') :
                                                     station.type.toLowerCase() === 'scooter' ? t('scooterStation') :
-                                                        station.type.toLowerCase() === 'bus' ? t('busStation') : t('metroStation')}
+                                                        station.type.toLowerCase() === 'bus' ? t('busStation') :
+                                                            station.type.toLowerCase() === 'metro' ? t('metroStation') :
+                                                                station.type.toLowerCase() === 'minibus' ? t('minibus') :
+                                                                    station.type.toLowerCase() === 'taxi' ? t('taxi') : t('dolmus')}
                                             </p>
                                         </div>
                                     </div>
@@ -332,6 +402,25 @@ const StationList: React.FC<StationListProps> = ({
                     })
                 )}
             </div>
+
+            {/* Footer */}
+            <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 shrink-0 flex flex-col gap-2">
+                <button
+                    onClick={() => setShowFeedbackModal(true)}
+                    className="w-full py-2 px-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-blue-600 dark:hover:text-blue-400 transition-colors flex items-center justify-center gap-2 shadow-sm"
+                >
+                    <MessageSquare size={16} />
+                    {t('sendFeedback') || 'Geri Bildirim Gönder'}
+                </button>
+                <div className="text-center text-[10px] text-slate-400 dark:text-slate-500 font-medium">
+                    Created by <span className="text-slate-600 dark:text-slate-400 font-bold">Olcay</span>
+                </div>
+            </div>
+
+            <FeedbackModal
+                isOpen={showFeedbackModal}
+                onClose={() => setShowFeedbackModal(false)}
+            />
         </div >
     );
 };
