@@ -1,7 +1,0 @@
-{
-  "name": "StationFlow Istanbul",
-  "description": "Şehir içi toplu taşıma, bisiklet ve scooter durumlarını gösteren akıllı mobilite paneli.",
-  "requestFramePermissions": [
-    "geolocation"
-  ]
-}

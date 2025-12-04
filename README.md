@@ -50,7 +50,7 @@ Projeyi yerel ortamınızda çalıştırmak için aşağıdaki adımları izleye
     ```
 
 3.  **Tarayıcıda Açın:**
-    Uygulama genellikle `http://localhost:5173` adresinde çalışacaktır.
+    Uygulama genellikle `http://localhost:3000` adresinde çalışacaktır.
 
 ## 📝 Notlar
 
