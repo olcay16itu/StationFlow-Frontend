@@ -4,6 +4,10 @@ StationFlow, şehir içi ulaşımı kolaylaştırmak amacıyla geliştirilmiş, 
 
 Bu repository, projenin **Frontend** kodlarını içermektedir. Projenin Backend kodları private bir repodadır.
 
+## 🌐 Canlı Demo
+
+Projeyi canlı olarak incelemek için: [https://stationflow.netlify.app](https://stationflow.netlify.app)
+
 ## 🚀 Özellikler
 
 *   **İnteraktif Harita:** Tüm durakları ve istasyonları harita üzerinde görüntüleme.
@@ -67,6 +71,10 @@ Bu proje şu anda kapalı geliştirme sürecindedir. Ancak hata bildirimleri ve 
 StationFlow is an application designed to facilitate urban transportation, allowing you to track public transport stops and shared vehicle stations (bikes, scooters, etc.) in real-time (how busy the stop is, how many vehicles are at the stop, etc.).
 
 This repository contains the **Frontend** code of the project. The Backend code of the project is in a private repository.
+
+## 🌐 Live Demo
+
+Check out the live project here: [https://stationflow.netlify.app](https://stationflow.netlify.app)
 
 ## 🚀 Features
 
