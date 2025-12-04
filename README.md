@@ -21,7 +21,7 @@ Projeyi canlı olarak incelemek için: [https://stationflow.netlify.app](https:/
 
 ## 🛠 Teknolojiler
 
-### Frontend (Bu Depo)
+### Frontend (Bu Repo)
 *   **Framework:** React (Vite ile)
 *   **Dil:** TypeScript
 *   **Stil:** Tailwind CSS
