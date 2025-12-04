@@ -56,6 +56,7 @@ Projeyi yerel ortamınızda çalıştırmak için aşağıdaki adımları izleye
 
 *   Bu proje, backend servisine `http://localhost:8080` (varsayılan) üzerinden bağlanacak şekilde yapılandırılmıştır. Backend servisi çalışmıyorsa harita verileri ve oturum işlemleri simüle edilebilir veya hata verebilir.
 *   Harita alt yapısı için OpenStreetMap ve CARTO sağlayıcıları kullanılmaktadır.
+*   Uygulamada gösterilen yoğunluk oranları ve araç sayıları simülasyon amaçlı **mock (örnek)** verilerdir.
 
 ## 🤝 Katkıda Bulunma
 
@@ -124,6 +125,7 @@ You can follow the steps below to run the project in your local environment:
 
 *   This project is configured to connect to the backend service via `http://localhost:8080` (default). If the backend service is not running, map data and session operations may be simulated or give errors.
 *   OpenStreetMap and CARTO providers are used for the map infrastructure.
+*   The occupancy rates and vehicle counts shown in the application are **mock data** for simulation purposes.
 
 ## 🤝 Contribution
 
