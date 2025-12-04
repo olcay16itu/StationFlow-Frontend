@@ -50,56 +50,15 @@ const MapView: React.FC<MapViewProps> = ({
     const onReportStatusRef = useRef(onReportStatus);
     const onDeselectRef = useRef(onDeselect);
 
+    const [zoomLevel, setZoomLevel] = React.useState(13);
+    const isSwitchingPopup = useRef(false);
+
     useEffect(() => {
         onCreateRouteRef.current = onCreateRoute;
         onRemoveRouteRef.current = onRemoveRoute;
         onReportStatusRef.current = onReportStatus;
         onDeselectRef.current = onDeselect;
     }, [onCreateRoute, onRemoveRoute, onReportStatus, onDeselect]);
-
-    // Helper to reliably bind popup buttons
-    const bindPopupButtons = (container: HTMLElement) => {
-        // Bind Route Button
-        const routeBtn = container.querySelector('.route-btn');
-        if (routeBtn) {
-            const newBtn = routeBtn.cloneNode(true);
-            routeBtn.parentNode?.replaceChild(newBtn, routeBtn);
-
-            newBtn.addEventListener('click', (ev) => {
-                ev.preventDefault();
-                ev.stopPropagation();
-                const targetBtn = ev.currentTarget as HTMLElement;
-                const action = targetBtn.getAttribute('data-action');
-
-                if (action === 'remove' && onRemoveRouteRef.current) {
-                    onRemoveRouteRef.current();
-                } else if (onCreateRouteRef.current) {
-                    onCreateRouteRef.current();
-                }
-            });
-        }
-
-        // Bind Report Button
-        const reportBtn = container.querySelector('.report-btn');
-        if (reportBtn) {
-            const newReportBtn = reportBtn.cloneNode(true);
-            reportBtn.parentNode?.replaceChild(newReportBtn, reportBtn);
-
-            newReportBtn.addEventListener('click', (ev) => {
-                ev.preventDefault();
-                ev.stopPropagation();
-                const targetBtn = ev.currentTarget as HTMLElement;
-                const stationId = targetBtn.getAttribute('data-station-id');
-                if (stationId && onReportStatusRef.current) {
-                    onReportStatusRef.current(stationId);
-                }
-            });
-        }
-    };
-
-    const [zoomLevel, setZoomLevel] = React.useState(13);
-
-    const isSwitchingPopup = useRef(false);
 
     // Initialize Map
     useEffect(() => {
@@ -126,7 +85,7 @@ const MapView: React.FC<MapViewProps> = ({
             showCoverageOnHover: false,
             maxClusterRadius: 50,
             spiderfyOnMaxZoom: true,
-            disableClusteringAtZoom: 16, // Disable clustering at high zoom
+            disableClusteringAtZoom: 16,
             iconCreateFunction: function (cluster) {
                 const count = cluster.getChildCount();
                 let c = ' marker-cluster-';
@@ -148,13 +107,9 @@ const MapView: React.FC<MapViewProps> = ({
         map.addLayer(clusterGroup);
         clusterGroupRef.current = clusterGroup;
 
-        // Global listener for ANY popup open event on the map
-        map.on('popupopen', (e) => {
+        // Global listener for popup open to handle switching state
+        map.on('popupopen', () => {
             isSwitchingPopup.current = false;
-            const contentNode = e.popup.getElement();
-            if (contentNode) {
-                bindPopupButtons(contentNode);
-            }
         });
 
         // Global listener for popup close to handle deselection
@@ -170,6 +125,41 @@ const MapView: React.FC<MapViewProps> = ({
             }, 200);
         });
 
+        // Event Delegation for Popup Buttons
+        const handleGlobalClick = (e: MouseEvent) => {
+            const target = e.target as HTMLElement;
+
+            // Handle Route Button
+            const routeBtn = target.closest('.route-btn');
+            if (routeBtn) {
+                e.preventDefault();
+                e.stopPropagation();
+                const action = routeBtn.getAttribute('data-action');
+                if (action === 'remove' && onRemoveRouteRef.current) {
+                    onRemoveRouteRef.current();
+                } else if (onCreateRouteRef.current) {
+                    onCreateRouteRef.current();
+                }
+                return;
+            }
+
+            // Handle Report Button
+            const reportBtn = target.closest('.report-btn');
+            if (reportBtn) {
+                e.preventDefault();
+                e.stopPropagation();
+                const stationId = reportBtn.getAttribute('data-station-id');
+                if (stationId && onReportStatusRef.current) {
+                    onReportStatusRef.current(stationId);
+                }
+                return;
+            }
+        };
+
+        if (mapContainerRef.current) {
+            mapContainerRef.current.addEventListener('click', handleGlobalClick);
+        }
+
         map.on('zoomend', () => {
             setZoomLevel(map.getZoom());
         });
@@ -177,6 +167,9 @@ const MapView: React.FC<MapViewProps> = ({
         setMapInstance(map);
 
         return () => {
+            if (mapContainerRef.current) {
+                mapContainerRef.current.removeEventListener('click', handleGlobalClick);
+            }
             map.remove();
             setMapInstance(null);
         };
@@ -240,20 +233,75 @@ const MapView: React.FC<MapViewProps> = ({
         }
     }, [userLocation, mapInstance]); // Added mapInstance dependency
 
-    // Handle Stations (Markers with Clustering)
+    const markersMapRef = useRef<Map<string, L.Marker>>(new Map());
+
+    // 1. Render Markers (Only when stations list changes)
     useEffect(() => {
         if (!mapInstance || !clusterGroupRef.current) return;
 
         const clusterGroup = clusterGroupRef.current;
         clusterGroup.clearLayers();
+        markersMapRef.current.clear();
 
         const markers: L.Layer[] = [];
 
         stations.forEach(station => {
+            let color = '#64748b';
+            switch (station.type.toLowerCase()) {
+                case 'bus': color = '#ef4444'; break;
+                case 'metro': color = '#4f46e5'; break;
+                case 'bike': color = '#22c55e'; break;
+                case 'scooter': color = '#eab308'; break;
+                case 'minibus': color = '#9333ea'; break;
+                case 'taxi': color = '#eab308'; break;
+                case 'dolmus': color = '#3b82f6'; break;
+            }
+            if (station.status === 'maintenance') {
+                color = '#9ca3af';
+            }
+
+            const circleIcon = L.divIcon({
+                className: 'bg-transparent',
+                html: `<div style="background-color: ${color}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.2);"></div>`,
+                iconSize: [12, 12],
+                iconAnchor: [6, 6]
+            });
+
+            const marker = L.marker([station.location.lat, station.location.lng], {
+                icon: circleIcon
+            });
+
+            // Initial popup content (will be updated by selection effect)
+            marker.bindPopup("Loading...", { autoClose: true, offset: [0, -10] });
+
+            marker.on('click', () => {
+                if (!isPickingLocation) {
+                    onStationSelect(station);
+                }
+            });
+
+            markers.push(marker);
+            markersMapRef.current.set(station.id, marker);
+        });
+
+        clusterGroup.addLayers(markers);
+    }, [stations, mapInstance, isPickingLocation]); // Only rebuild if stations change
+
+    // 2. Handle Selection & Visual Updates (Icons, Popups, Animation)
+    useEffect(() => {
+        if (!mapInstance || !clusterGroupRef.current) return;
+
+        const clusterGroup = clusterGroupRef.current;
+
+        stations.forEach(station => {
+            const marker = markersMapRef.current.get(station.id);
+            if (!marker) return;
+
             const isSelected = selectedStation?.id === station.id;
             const isDestination = routeDestination?.id === station.id;
+            const isRouteActive = showRoute && routeDestination?.id === station.id;
 
-            // Determine colors
+            // Update Icon
             let color = '#64748b';
             let colorClass = '';
             let iconChar = '';
@@ -267,13 +315,34 @@ const MapView: React.FC<MapViewProps> = ({
                 case 'taxi': color = '#eab308'; colorClass = 'bg-yellow-500'; iconChar = '🚕'; break;
                 case 'dolmus': color = '#3b82f6'; colorClass = 'bg-blue-500'; iconChar = '🚐'; break;
             }
-
             if (station.status === 'maintenance') {
                 color = '#9ca3af'; colorClass = 'bg-gray-400'; iconChar = '🔧';
             }
 
-            // Determine button state based on route
-            const isRouteActive = showRoute && routeDestination?.id === station.id;
+            if (isSelected || isDestination) {
+                const size = 'w-10 h-10 text-xl';
+                const customIcon = L.divIcon({
+                    className: 'bg-transparent',
+                    html: `<div class="${colorClass} ${size} rounded-full border-2 border-white shadow-lg flex items-center justify-center transition-all transform hover:scale-110 text-white font-bold cursor-pointer">
+                        ${iconChar}
+                       </div>`,
+                    iconSize: [40, 40],
+                    iconAnchor: [20, 20]
+                });
+                marker.setIcon(customIcon);
+                marker.setZIndexOffset(1000);
+            } else {
+                const circleIcon = L.divIcon({
+                    className: 'bg-transparent',
+                    html: `<div style="background-color: ${color}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.2);"></div>`,
+                    iconSize: [12, 12],
+                    iconAnchor: [6, 6]
+                });
+                marker.setIcon(circleIcon);
+                marker.setZIndexOffset(0);
+            }
+
+            // Update Popup Content
             const btnText = isRouteActive ? 'Rotayı Bitir' : 'Rota Oluştur';
             const btnColor = isRouteActive ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700';
             const action = isRouteActive ? 'remove' : 'create';
@@ -301,60 +370,53 @@ const MapView: React.FC<MapViewProps> = ({
                     </button>
                 </div>
             </div>
-        `;
-
-            let marker: L.Marker;
-
-            if (isSelected || isDestination) {
-                const size = 'w-10 h-10 text-xl';
-                const customIcon = L.divIcon({
-                    className: 'bg-transparent',
-                    html: `<div class="${colorClass} ${size} rounded-full border-2 border-white shadow-lg flex items-center justify-center transition-all transform hover:scale-110 text-white font-bold cursor-pointer">
-                        ${iconChar}
-                       </div>`,
-                    iconSize: [40, 40],
-                    iconAnchor: [20, 20]
-                });
-
-                marker = L.marker([station.location.lat, station.location.lng], {
-                    icon: customIcon,
-                    zIndexOffset: 1000
-                });
-
-                if (isSelected) {
-                    marker.bindPopup(popupContent, { offset: [0, -10], autoClose: true });
-                    setTimeout(() => {
-                        if (!marker.isPopupOpen()) marker.openPopup();
-                    }, 100);
-                } else {
-                    marker.bindPopup(popupContent, { offset: [0, -10], autoClose: true });
-                }
-
-            } else {
-                const circleIcon = L.divIcon({
-                    className: 'bg-transparent',
-                    html: `<div style="background-color: ${color}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.2);"></div>`,
-                    iconSize: [12, 12],
-                    iconAnchor: [6, 6]
-                });
-
-                marker = L.marker([station.location.lat, station.location.lng], {
-                    icon: circleIcon
-                }).bindPopup(popupContent, { autoClose: true });
-            }
-
-            marker.on('click', () => {
-                if (!isPickingLocation) {
-                    onStationSelect(station);
-                }
-            });
-
-            markers.push(marker);
+            `;
+            marker.setPopupContent(popupContent);
         });
 
-        clusterGroup.addLayers(markers);
+        // Handle FlyTo and OpenPopup for Selected Station
+        if (selectedStation && !showRoute && !isPickingLocation) {
+            const marker = markersMapRef.current.get(selectedStation.id);
+            if (marker) {
+                const currentZoom = mapInstance.getZoom();
+                const targetZoom = 16;
 
-    }, [stations, selectedStation, routeDestination, showRoute, isPickingLocation, mapInstance]);
+                // Always try to open popup, even if already there
+                const openPopupSafe = () => {
+                    if (clusterGroup.hasLayer(marker)) {
+                        clusterGroup.zoomToShowLayer(marker, () => {
+                            marker.openPopup();
+                        });
+                    } else {
+                        marker.openPopup();
+                    }
+                };
+
+                if (currentZoom < targetZoom) {
+                    mapInstance.flyTo(marker.getLatLng(), targetZoom, { duration: 1.5 });
+
+                    let timeoutId: NodeJS.Timeout;
+                    const onMoveEnd = () => {
+                        openPopupSafe();
+                        mapInstance.off('moveend', onMoveEnd);
+                        clearTimeout(timeoutId);
+                    };
+
+                    mapInstance.once('moveend', onMoveEnd);
+                    timeoutId = setTimeout(onMoveEnd, 1600);
+
+                    return () => {
+                        mapInstance.off('moveend', onMoveEnd);
+                        clearTimeout(timeoutId);
+                    };
+                } else {
+                    mapInstance.panTo(marker.getLatLng());
+                    openPopupSafe();
+                }
+            }
+        }
+
+    }, [selectedStation, routeDestination, showRoute, isPickingLocation, mapInstance, stations]); // Re-run when selection/route changes
 
     const hasFittedRouteRef = useRef(false);
 
@@ -393,14 +455,15 @@ const MapView: React.FC<MapViewProps> = ({
                         if (!isCancelled) {
                             routeLayerRef.current = L.polyline(latLngs, {
                                 color: '#3b82f6',
-                                weight: 5,
-                                opacity: 0.8,
+                                weight: 6, // Thicker line for mobile visibility
+                                opacity: 0.9,
                                 lineCap: 'round',
                                 lineJoin: 'round'
                             }).addTo(mapInstance);
 
                             if (!hasFittedRouteRef.current) {
-                                mapInstance.fitBounds(L.latLngBounds(latLngs), { padding: [50, 50] });
+                                // Add more padding for mobile
+                                mapInstance.fitBounds(L.latLngBounds(latLngs), { padding: [80, 80] });
                                 hasFittedRouteRef.current = true;
                             }
                         }
@@ -417,13 +480,13 @@ const MapView: React.FC<MapViewProps> = ({
                     if (!isCancelled) {
                         routeLayerRef.current = L.polyline(latlngs, {
                             color: '#ef4444',
-                            weight: 4,
-                            opacity: 0.7,
+                            weight: 5,
+                            opacity: 0.8,
                             dashArray: '10, 10'
                         }).addTo(mapInstance);
 
                         if (!hasFittedRouteRef.current) {
-                            mapInstance.fitBounds(L.latLngBounds(latlngs), { padding: [50, 50] });
+                            mapInstance.fitBounds(L.latLngBounds(latlngs), { padding: [80, 80] });
                             hasFittedRouteRef.current = true;
                         }
                     }
@@ -442,15 +505,6 @@ const MapView: React.FC<MapViewProps> = ({
         };
 
     }, [showRoute, userLocation, routeDestination, isPickingLocation, mapInstance]);
-
-    // Center map on selection
-    useEffect(() => {
-        if (selectedStation && mapInstance && !showRoute && !isPickingLocation) {
-            mapInstance.flyTo([selectedStation.location.lat, selectedStation.location.lng], 16, {
-                duration: 1.5
-            });
-        }
-    }, [selectedStation, showRoute, isPickingLocation, mapInstance]);
 
     return <div ref={mapContainerRef} className="h-full w-full bg-slate-200" />;
 };

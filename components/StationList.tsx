@@ -1,15 +1,17 @@
 import React from 'react';
 import Logo from './Logo';
-import { Station, TransportType, User } from '../types';
+import { Station, TransportType } from '../types';
 import {
     Bus, Train, Bike, Zap, MapPin, Trash2, PlusCircle, LogIn, LogOut,
     CheckCircle, AlertCircle, Ban, Wrench, ChevronLeft, ShieldCheck, Navigation,
-    Moon, Sun, Globe, Car, MessageSquare
+    Moon, Sun, Car, MessageSquare
 } from 'lucide-react';
 import FeedbackModal from './FeedbackModal';
 
 import { useTheme } from '../contexts/ThemeContext';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useAuth } from '../contexts/AuthContext';
+import UserProfileModal from './UserProfileModal';
 
 interface StationListProps {
     stations: Station[];
@@ -22,7 +24,6 @@ interface StationListProps {
     filter: TransportType | 'all';
     setFilter: (t: TransportType | 'all') => void;
     isLoading: boolean;
-    user: User | null;
     isOpen: boolean;
     onClose: () => void;
 }
@@ -52,12 +53,14 @@ const StationList: React.FC<StationListProps> = ({
     filter,
     setFilter,
     isLoading,
-    user,
     isOpen,
     onClose
 }) => {
     const { darkMode, toggleDarkMode } = useTheme();
     const { language, setLanguage, t } = useLanguage();
+    const { user, logout } = useAuth();
+
+    const [showProfileModal, setShowProfileModal] = React.useState(false);
 
     const categories: { id: TransportType | 'all'; label: string; icon: React.ReactNode }[] = [
         { id: 'all', label: t('all'), icon: <MapPin size={16} /> },
@@ -221,15 +224,28 @@ const StationList: React.FC<StationListProps> = ({
 
             {
                 user && (
-                    <div className={`px-4 py-2 text-xs font-medium flex justify-between items-center shadow-inner shrink-0 ${isAdmin ? 'bg-indigo-50 text-indigo-800 dark:bg-indigo-900/20 dark:text-indigo-300' : 'bg-slate-50 text-slate-600 dark:bg-slate-800/50 dark:text-slate-400'
-                        }`}>
-                        <span className="flex items-center gap-1.5">
-                            <div className={`w-2 h-2 rounded-full animate-pulse ${isAdmin ? 'bg-indigo-500' : 'bg-slate-400'}`}></div>
-                            {user.username}
-                        </span>
-                        <span className="opacity-90 flex items-center gap-1">
-                            {isAdmin ? <><ShieldCheck size={12} /> Admin</> : t('user')}
-                        </span>
+                    <div className="px-3 pt-3 pb-1 bg-white dark:bg-slate-900 shrink-0">
+                        <div className="flex items-center justify-between bg-slate-100 dark:bg-slate-700 p-3 rounded-lg">
+                            <button
+                                onClick={() => setShowProfileModal(true)}
+                                className="flex items-center gap-2 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600 p-2 rounded-lg transition-colors flex-1 text-left"
+                            >
+                                <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center text-blue-600 dark:text-blue-300 font-bold">
+                                    {user.username.charAt(0).toUpperCase()}
+                                </div>
+                                <div className="flex flex-col">
+                                    <span className="font-medium text-sm">{user.username}</span>
+                                    <span className="text-xs text-slate-500 dark:text-slate-400">Profil & Geçmiş</span>
+                                </div>
+                            </button>
+                            <button
+                                onClick={logout}
+                                className="p-2 text-slate-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                                title="Çıkış Yap"
+                            >
+                                <LogOut size={20} />
+                            </button>
+                        </div>
                     </div>
                 )
             }
@@ -421,6 +437,12 @@ const StationList: React.FC<StationListProps> = ({
                 isOpen={showFeedbackModal}
                 onClose={() => setShowFeedbackModal(false)}
             />
+            {showProfileModal && user && (
+                <UserProfileModal
+                    user={user}
+                    onClose={() => setShowProfileModal(false)}
+                />
+            )}
         </div >
     );
 };

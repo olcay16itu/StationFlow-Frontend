@@ -1,16 +1,14 @@
 import React, { useState, useRef } from 'react';
-import { User } from '../types';
-import { login, register } from '../services/api';
 import { UserCheck, ArrowRight } from 'lucide-react';
 import ReCAPTCHA from 'react-google-recaptcha';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useAuth } from '../contexts/AuthContext';
 
 interface AuthViewProps {
-    onAuthSuccess: (user: User) => void;
     onCancel: () => void;
 }
 
-const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess, onCancel }) => {
+const AuthView: React.FC<AuthViewProps> = ({ onCancel }) => {
     const [isLogin, setIsLogin] = useState(true);
     const [username, setUsername] = useState('');
     const [email, setEmail] = useState('');
@@ -20,6 +18,7 @@ const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess, onCancel }) => {
     const [recaptchaToken, setRecaptchaToken] = useState<string | null>(null);
     const recaptchaRef = useRef<ReCAPTCHA>(null);
     const { t } = useLanguage();
+    const { login, register } = useAuth();
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -65,8 +64,8 @@ const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess, onCancel }) => {
         setLoading(true);
         try {
             if (isLogin) {
-                const user = await login(username, password);
-                onAuthSuccess(user);
+                await login(username, password);
+                onCancel(); // Close modal on success
             } else {
                 await register(username, email, password, recaptchaToken!);
                 alert("Kayıt başarılı! Lütfen giriş yapın.");

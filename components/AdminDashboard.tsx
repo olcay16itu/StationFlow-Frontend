@@ -3,7 +3,11 @@ import { fetchUpdateRequests, approveUpdateRequest, rejectUpdateRequest } from '
 
 import { UpdateRequest } from '../types';
 
-const AdminDashboard: React.FC = () => {
+interface AdminDashboardProps {
+    onActionComplete?: (count: number) => void;
+}
+
+const AdminDashboard: React.FC<AdminDashboardProps> = ({ onActionComplete }) => {
     const [requests, setRequests] = useState<UpdateRequest[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -26,8 +30,17 @@ const AdminDashboard: React.FC = () => {
     const handleApprove = async (id: string) => {
         try {
             await approveUpdateRequest(id);
-            // Remove from list
-            setRequests(prev => prev.filter(r => r.id !== id));
+
+            // Calculate new state first
+            const updatedRequests = requests.filter(r => r.id !== id);
+
+            // Update parent state
+            if (onActionComplete) {
+                onActionComplete(updatedRequests.length);
+            }
+
+            // Update local state
+            setRequests(updatedRequests);
         } catch (err) {
             alert('Onaylama başarısız');
         }
@@ -36,8 +49,17 @@ const AdminDashboard: React.FC = () => {
     const handleReject = async (id: string) => {
         try {
             await rejectUpdateRequest(id);
-            // Remove from list
-            setRequests(prev => prev.filter(r => r.id !== id));
+
+            // Calculate new state first
+            const updatedRequests = requests.filter(r => r.id !== id);
+
+            // Update parent state
+            if (onActionComplete) {
+                onActionComplete(updatedRequests.length);
+            }
+
+            // Update local state
+            setRequests(updatedRequests);
         } catch (err) {
             alert('Reddetme başarısız');
         }
@@ -47,7 +69,7 @@ const AdminDashboard: React.FC = () => {
     if (error) return <div className="p-4 text-red-500">{error}</div>;
 
     return (
-        <div className="bg-white rounded-lg shadow p-6 max-w-4xl mx-auto mt-10">
+        <div className="bg-white rounded-lg shadow p-4 sm:p-6 max-w-4xl mx-auto mt-4 sm:mt-10">
             <h2 className="text-2xl font-bold mb-6 text-slate-800">Bekleyen İstasyon Güncellemeleri</h2>
 
             {requests.length === 0 ? (

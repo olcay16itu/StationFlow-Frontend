@@ -5,11 +5,13 @@ import AuthView from './components/AuthView';
 import AddStationModal from './components/AddStationModal';
 import AdminDashboard from './components/AdminDashboard';
 import ReportStatusModal from './components/ReportStatusModal';
-import { Station, UserLocation, TransportType, User, Location } from './types';
-import { fetchStations, createStation, deleteStation, requestStationUpdate } from './services/api';
-import { Navigation, X, MapPin, Menu, XCircle, ShieldAlert, ChevronLeft } from 'lucide-react';
+import { Station, UserLocation, TransportType, Location } from './types';
+import { fetchStations, createStation, deleteStation, requestStationUpdate, fetchUpdateRequests, fetchFeedbacks } from './services/api';
+import { MapPin, Menu, XCircle, ShieldAlert, X, MessageSquare } from 'lucide-react';
+import FeedbackDashboard from './components/FeedbackDashboard';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { LanguageProvider } from './contexts/LanguageContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 
 const AppContent: React.FC = () => {
   const [stations, setStations] = useState<Station[]>([]);
@@ -17,16 +19,19 @@ const AppContent: React.FC = () => {
   const [selectedStation, setSelectedStation] = useState<Station | null>(null);
   const [routeDestination, setRouteDestination] = useState<Station | null>(null);
   const [filter, setFilter] = useState<TransportType | 'all'>('all');
-  const [isLoading, setIsLoading] = useState(true);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [showRoute, setShowRoute] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 640);
 
   // Auth & Management States
-  const [user, setUser] = useState<User | null>(null);
+  const { user, logout } = useAuth();
   const [showAuth, setShowAuth] = useState(false);
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
+  const [showFeedbackDashboard, setShowFeedbackDashboard] = useState(false);
   const [reportStation, setReportStation] = useState<Station | null>(null);
   const [showReportModal, setShowReportModal] = useState(false);
+  const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
+  const [feedbackCount, setFeedbackCount] = useState(0);
 
   // Adding Station States
   const [showAddStation, setShowAddStation] = useState(false);
@@ -35,10 +40,55 @@ const AppContent: React.FC = () => {
 
   const dataFetchedRef = useRef(false);
 
+  // Reload stations when user changes (login/logout)
   useEffect(() => {
-    const savedUser = localStorage.getItem('urbanmove_user_session');
-    if (savedUser) setUser(JSON.parse(savedUser));
+    if (!isInitialLoading) {
+      loadStations(false);
+    }
+    // Cleanup on logout
+    if (!user) {
+      setShowAddStation(false);
+      setIsPickingLocation(false);
+      setPendingRequestsCount(0);
+    } else if (user.role === 'admin') {
+      checkPendingRequests();
+      checkFeedbackCount();
+    }
+  }, [user]);
 
+  const checkFeedbackCount = async (count?: number) => {
+    if (user?.role !== 'admin') return;
+
+    if (typeof count === 'number') {
+      setFeedbackCount(count);
+      return;
+    }
+
+    try {
+      const feedbacks = await fetchFeedbacks();
+      setFeedbackCount(feedbacks.length);
+    } catch (error) {
+      console.error("Failed to fetch feedbacks", error);
+    }
+  };
+
+  const checkPendingRequests = async (count?: number) => {
+    if (user?.role !== 'admin') return;
+
+    if (typeof count === 'number') {
+      setPendingRequestsCount(count);
+      return;
+    }
+
+    try {
+      const requests = await fetchUpdateRequests();
+      setPendingRequestsCount(requests.length);
+    } catch (error) {
+      console.error("Failed to fetch update requests", error);
+    }
+  };
+
+  useEffect(() => {
     let watchId: number;
 
     if (navigator.geolocation) {
@@ -51,54 +101,84 @@ const AppContent: React.FC = () => {
           });
 
           if (!dataFetchedRef.current) {
-            loadStations();
+            loadStations(true);
             dataFetchedRef.current = true;
           }
         },
         (error) => {
           console.error("Location error:", error);
           if (!dataFetchedRef.current) {
-            loadStations();
+            loadStations(true);
             dataFetchedRef.current = true;
           }
         },
-        { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
       );
     } else {
-      loadStations();
+      loadStations(true);
     }
+
+    // SSE Subscription
+    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
+    // Remove trailing slash if present to avoid double slashes
+    const cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+    // Ensure we don't duplicate /api if it's already in the base URL
+    const endpoint = cleanBaseUrl.endsWith('/api')
+      ? '/notifications/subscribe'
+      : '/api/notifications/subscribe';
+
+    const eventSource = new EventSource(`${cleanBaseUrl}${endpoint}`);
+
+    eventSource.addEventListener('station-update', (event) => {
+      try {
+        const updatedStation: Station = JSON.parse(event.data);
+        setStations(prevStations =>
+          prevStations.map(s => s.id === updatedStation.id ? updatedStation : s)
+        );
+        // Also update selected station if it's the one being updated
+        setSelectedStation(prev => prev?.id === updatedStation.id ? updatedStation : prev);
+      } catch (error) {
+        console.error("Error parsing station update:", error);
+      }
+    });
+
+    eventSource.addEventListener('heartbeat', (event) => {
+      // Heartbeat received, connection is alive
+      console.debug("SSE Heartbeat received");
+    });
+
+    eventSource.onerror = (error) => {
+      console.error("SSE Error:", error);
+      // Do NOT close explicitly, let the browser retry.
+      // eventSource.close(); 
+
+      // If readyState is CLOSED (2), we might want to try re-establishing after a delay if the browser doesn't.
+      if (eventSource.readyState === EventSource.CLOSED) {
+        // Browser usually handles this, but if we wanted custom logic we'd do it here.
+      }
+    };
 
     return () => {
       if (watchId) navigator.geolocation.clearWatch(watchId);
+      eventSource.close();
     };
   }, []);
 
-  const loadStations = async () => {
-    setIsLoading(true);
+  const loadStations = async (showLoading = false) => {
+    if (showLoading) setIsInitialLoading(true);
     try {
       const data = await fetchStations();
       setStations(data);
     } catch (e) {
       console.error("Failed to fetch stations", e);
     } finally {
-      setIsLoading(false);
+      if (showLoading) setIsInitialLoading(false);
     }
   };
 
-  const handleLogin = (newUser: User) => {
-    setUser(newUser);
-    localStorage.setItem('urbanmove_user_session', JSON.stringify(newUser));
-    setShowAuth(false);
-    loadStations();
-  };
-
   const handleLogout = () => {
-    setUser(null);
-    localStorage.removeItem('urbanmove_user_session');
-    setShowAddStation(false);
-    setIsPickingLocation(false);
-    setStations([]);
-    loadStations();
+    logout();
+    // Cleanup handled in useEffect
   };
 
   const handleAddStation = async (newStationData: Omit<Station, 'id' | 'lastUpdate'>) => {
@@ -211,13 +291,16 @@ const AppContent: React.FC = () => {
       alert("Güncelleme isteği gönderildi. Admin onayı bekleniyor.");
       setShowReportModal(false);
       setReportStation(null);
+      if (user?.role === 'admin') {
+        checkPendingRequests();
+      }
     } catch (error: any) {
       alert("İstek gönderilemedi: " + error.message);
       throw error;
     }
   };
 
-  if (isLoading) {
+  if (isInitialLoading) {
     return (
       <div className="fixed inset-0 bg-slate-100 dark:bg-slate-900 z-[9999] flex flex-col items-center justify-center">
         <div className="relative flex h-20 w-20 mb-4">
@@ -233,10 +316,10 @@ const AppContent: React.FC = () => {
   }
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-slate-100 dark:bg-slate-900 transition-colors duration-300">
+    <div className="relative h-[100dvh] w-screen overflow-hidden bg-slate-100 dark:bg-slate-900 transition-colors duration-300">
 
       {showAuth && (
-        <AuthView onAuthSuccess={handleLogin} onCancel={() => setShowAuth(false)} />
+        <AuthView onCancel={() => setShowAuth(false)} />
       )}
 
       {showAddStation && (
@@ -298,8 +381,7 @@ const AppContent: React.FC = () => {
         onLogoutClick={handleLogout}
         filter={filter}
         setFilter={handleFilterChange}
-        isLoading={isLoading}
-        user={user}
+        isLoading={isInitialLoading}
         isOpen={isSidebarOpen && !isPickingLocation}
         onClose={() => setIsSidebarOpen(false)}
       />
@@ -321,7 +403,7 @@ const AppContent: React.FC = () => {
         />
 
         {showRoute && routeDestination && (
-          <div className="absolute bottom-20 sm:bottom-10 left-0 right-0 z-[500] flex justify-center px-4 pointer-events-none pb-safe">
+          <div className="absolute bottom-32 sm:bottom-10 left-0 right-0 z-[500] flex justify-center px-4 pointer-events-none pb-safe">
             <button
               onClick={handleRemoveRoute}
               className="pointer-events-auto bg-red-600 hover:bg-red-700 text-white font-bold py-3.5 px-6 rounded-full shadow-[0_10px_40px_-10px_rgba(220,38,38,0.5)] transform transition-all hover:scale-105 active:scale-95 flex items-center gap-2 animate-fade-in-up border-2 border-white/20 max-w-[90%] truncate"
@@ -334,28 +416,66 @@ const AppContent: React.FC = () => {
 
         {/* Admin Dashboard Toggle */}
         {user?.role === 'admin' && (
-          <div className="absolute top-24 right-4 z-[500]">
-            <button
-              onClick={() => setShowAdminDashboard(!showAdminDashboard)}
-              className="bg-slate-800 text-white p-3 rounded-full shadow-lg hover:bg-slate-700 transition-colors"
-              title="Admin Paneli"
-            >
-              <ShieldAlert size={24} />
-            </button>
-          </div>
+          <>
+            <div className="absolute top-24 right-4 z-[500] flex flex-col gap-3">
+              <button
+                onClick={() => {
+                  setShowAdminDashboard(!showAdminDashboard);
+                  setShowFeedbackDashboard(false);
+                }}
+                className="bg-slate-800 text-white p-3 rounded-full shadow-lg hover:bg-slate-700 transition-colors relative"
+                title="Admin Paneli"
+              >
+                <ShieldAlert size={24} />
+                {pendingRequestsCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full border-2 border-slate-100 dark:border-slate-900 min-w-[20px] text-center">
+                    {pendingRequestsCount}
+                  </span>
+                )}
+              </button>
+
+              <button
+                onClick={() => {
+                  setShowFeedbackDashboard(!showFeedbackDashboard);
+                  setShowAdminDashboard(false);
+                }}
+                className="bg-purple-600 text-white p-3 rounded-full shadow-lg hover:bg-purple-700 transition-colors relative"
+                title="Geri Bildirimler"
+              >
+                <MessageSquare size={24} />
+                {feedbackCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full border-2 border-slate-100 dark:border-slate-900 min-w-[20px] text-center">
+                    {feedbackCount}
+                  </span>
+                )}
+              </button>
+            </div>
+          </>
         )}
 
         {/* Admin Dashboard Modal */}
         {showAdminDashboard && (
           <div className={`absolute inset-0 z-[600] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 transition-all duration-300 ${isSidebarOpen && window.innerWidth > 640 ? 'left-80' : 'left-0'}`}>
-            <div className="relative w-full max-w-4xl max-h-[90vh] overflow-auto">
+            <div className="relative w-[95%] sm:w-full max-w-4xl max-h-[90vh] overflow-auto">
               <button
                 onClick={() => setShowAdminDashboard(false)}
                 className="absolute top-4 right-4 z-10 bg-white rounded-full p-1 shadow-md hover:bg-gray-100"
               >
                 <X size={24} />
               </button>
-              <AdminDashboard />
+              <AdminDashboard onActionComplete={checkPendingRequests} />
+            </div>
+          </div>
+        )}
+
+        {/* Feedback Dashboard Modal */}
+        {showFeedbackDashboard && (
+          <div className={`absolute inset-0 z-[600] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 transition-all duration-300 ${isSidebarOpen && window.innerWidth > 640 ? 'left-80' : 'left-0'}`}>
+            <div className="relative w-[95%] sm:w-full max-w-2xl">
+              <FeedbackDashboard onClose={() => {
+                setShowFeedbackDashboard(false);
+                checkFeedbackCount();
+              }} />
             </div>
           </div>
         )}
@@ -377,7 +497,9 @@ const App: React.FC = () => {
   return (
     <ThemeProvider>
       <LanguageProvider>
-        <AppContent />
+        <AuthProvider>
+          <AppContent />
+        </AuthProvider>
       </LanguageProvider>
     </ThemeProvider>
   );

@@ -139,6 +139,37 @@ export const fetchUpdateRequests = async () => {
     return response.json();
 };
 
+export const fetchMyUpdateRequests = async () => {
+    const response = await fetch(`${API_URL}/stations/my-requests`, {
+        headers: {
+            ...getAuthHeader()
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error('Geçmiş istekler alınamadı');
+    }
+    return response.json();
+};
+
+export const changePassword = async (currentPassword: string, newPassword: string) => {
+    const response = await fetch(`${API_URL}/auth/change-password`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            ...getAuthHeader()
+        },
+        body: JSON.stringify({ currentPassword, newPassword })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+        throw new Error(data.message || 'Şifre değiştirilemedi');
+    }
+    return data;
+};
+
 export const approveUpdateRequest = async (requestId: string) => {
     const response = await fetch(`${API_URL}/stations/requests/${requestId}/approve`, {
         method: 'POST',
@@ -180,6 +211,19 @@ export const submitFeedback = async (message: string, email?: string) => {
 
     if (!response.ok) {
         throw new Error('Geri bildirim gönderilemedi');
+    }
+    return response.json();
+};
+
+export const fetchFeedbacks = async () => {
+    const response = await fetch(`${API_URL}/feedback`, {
+        headers: {
+            ...getAuthHeader()
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error('Geri bildirimler alınamadı');
     }
     return response.json();
 };
