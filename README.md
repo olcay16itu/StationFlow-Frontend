@@ -118,7 +118,7 @@ You can follow the steps below to run the project in your local environment:
     ```
 
 3.  **Open in Browser:**
-    The application will usually run at `http://localhost:5173`.
+    The application will usually run at `http://localhost:3000`.
 
 ## 📝 Notes
 
