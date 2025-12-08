@@ -58,6 +58,7 @@ Projeyi yerel ortamınızda çalıştırmak için aşağıdaki adımları izleye
 *   Harita alt yapısı için OpenStreetMap ve CARTO sağlayıcıları kullanılmaktadır.
 *   Uygulamada gösterilen yoğunluk oranları ve araç sayıları simülasyon amaçlı **mock (örnek)** verilerdir.
 *   Durak verilerinin bir kısmı İBB API aracılığıyla Cron Job ile güncellenmekte, bir kısmı ise İBB den alınan statik geojson verilerle oluşturulmuştur.
+*   Daha detaylı kullanım (anlık durak güncellemeleri, geri bildirim kontrolü, durak bildirim onayları vb.) için Feedback formundan **Admin** kullanıcısı erişimi talep edebilirsiniz.
 
 ## 🤝 Katkıda Bulunma
 
@@ -128,6 +129,7 @@ You can follow the steps below to run the project in your local environment:
 *   OpenStreetMap and CARTO providers are used for the map infrastructure.
 *   The occupancy rates and vehicle counts shown in the application are **mock data** for simulation purposes.
 *   Some station data is updated via IBB API using Cron Jobs, while some is created using static geojson data obtained from IBB.
+*   You can request **Admin** user access via the Feedback form for more detailed usage (real-time station updates, feedback control, station report approvals, etc.).
 
 ## 🤝 Contribution
 
